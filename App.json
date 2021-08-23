@@ -1,0 +1,41 @@
+﻿{
+  
+    "ViewSets":
+    [
+      {
+        "ViewName": "门急诊检验申请单",
+        "ViewCode": "v_yyh_mjzjysqd",
+        "SetCode": "C0102.0303.01",
+        "Sql": "select * from v_yyh_zyjysqd where WS06_00_917_01>='{0}'  and WS06_00_917_01<'{1}' and WS02_01_030_01 is not null and WS01_00_014_01 is not null"
+      },
+      {
+
+        "ViewName": "门急诊检验报告",
+        "ViewCode": "v_yyh_mjzjybg"
+      },
+      {
+        "ViewCode": "v_yyh_mjzjycgbg",
+        "ViewName": "门急诊检验常规报告"
+      },
+      {
+        "ViewName": "住院检验申请单",
+        "ViewCode": "v_yyh_zyjysqd"
+      },
+      {
+
+        "ViewName": "住院检验报告",
+        "ViewCode": "v_yyh_zyjybg"
+      },
+      {
+
+        "ViewName": "住院检验常规报告",
+        "ViewCode": "v_yyh_zyjycgbg"
+      }
+    ],
+    "HospitalSetting":
+    {
+      "HospitalName": "富阳区第三人民医院",
+      "HospitalCode": "47033249933018311H1191"
+    }
+  
+}

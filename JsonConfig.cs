@@ -10,22 +10,14 @@ namespace YYhUpload
     public class JsonConfig
     {
         public List<ViewSet> ViewSets { get; set; }
-        public HospitalSetting HospitalSetting { get; set; }
     }
-
-
-    public class HospitalSetting
-    {
-        public string HospitalName { get; set; }
-        public string HospitalCode { get; set; }
-    }
-
     public class ViewSet
     {
+        public string Index { get; set; }
         public string ViewName { get; set; }
-        public string ViewCode { get; set; }
         public string SetCode { get; set; }
         public string Sql { get; set; }
+        public string Use { get; set; }
     }
 
 

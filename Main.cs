@@ -7,10 +7,10 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using YYhUpload.Handle;
-using YYhUpload.Model;
+using System.Xml.Linq;
 
 namespace YYhUpload
 {
@@ -46,21 +46,6 @@ namespace YYhUpload
         }
 
 
-
-        public List<TaskRecord> UploadBatchData(string viewName, DateTime begin, DateTime end)
-        {
-            return viewName switch
-            {
-                "v_yyh_mjzjybg" => new Mjz_JybgHandle(begin, end).UploadBatch(),
-                "v_yyh_mjzjycgbg" => new Mjz_JycgbgHandle(begin, end).UploadBatch(),
-                "v_yyh_mjzjysqd" => new Mjz_JysqdHandle(begin, end).UploadBatch(),
-                "v_yyh_zyjybg" => new Zy_JybgHandle(begin, end).UploadBatch(),
-                "v_yyh_zyjycgbg" => new Zy_JycgbgHandle(begin, end).UploadBatch(),
-                "v_yyh_zyjysqd" => new Zy_JysqdHandle(begin, end).UploadBatch(),
-                _ => null
-            };
-        }
-
         /// <summary>
         /// 整个程序的初始化操作
         /// </summary>
@@ -76,9 +61,10 @@ namespace YYhUpload
         /// </summary>
         private void InitializeViewCombobox()
         {
-            cmbView.DataSource = JsonConfig.ViewSets;
-            cmbView.ValueMember = "ViewCode";
+            cmbView.DataSource = JsonConfig.ViewSets.Where(p=>p.Use=="1").ToList();
+            cmbView.ValueMember = "Index";
             cmbView.DisplayMember = "ViewName";
+            this.cmbDbType.SelectedIndex = 0;
         }
 
         /// <summary>
@@ -106,29 +92,78 @@ namespace YYhUpload
 
         private void btnUpload_Click(object sender, EventArgs e)
         {
-            var viewName = this.cmbView.SelectedValue.ToString();
-            var viewText = this.cmbView.Text;
-            var begin = this.dtpStart.Value;
-            var end = this.dtpStop.Value;
+            var index = this.cmbView.SelectedValue.ToString();
+            var viewName = this.cmbView.Text;
+            var begin = this.dtpStart.Value.Date;
+            var end = this.dtpStop.Value.Date.AddDays(1).AddMilliseconds(-1);
+            var dbType = this.cmbDbType.Text;
 
             try
             {
-                AddRowToTable(DateTime.Now, viewText, $"开始上传，时间范围数据{begin:yyyy年MM月dd日}-{end:yyyy年MM月dd日}");
-                var taskList = UploadBatchData(viewName, begin, end);
-                if (taskList.Any())
+                var onceNumber = 10000;
+                AddRowToTable(DateTime.Now, viewName, $"开始上传，时间范围{begin:yyyy年MM月dd日}-{end:yyyy年MM月dd日}");
+                var viewSet = JsonConfig.ViewSets.FirstOrDefault(p => p.ViewName == viewName);
+                if (viewSet?.SetCode is null || viewSet.Sql is null)
                 {
-                    foreach (var item in taskList)
+                    MessageBox.Show("App.json配置文件中SetCode与Sql语句不能为空");
+                    return;
+                }
+                //拼接视图查询语句
+                string querySql = string.Format(viewSet.Sql, $"{begin:yyyyMMddHHmmss}", $"{end:yyyyMMddHHmmss}");
+                AddRowToTable(DateTime.Now, viewName, $"sql语句：{querySql}");
+                //查询视图数据
+                AddRowToTable(DateTime.Now, viewName, $"开始获取视图数据");
+                var table = GenericService.GetDataTable(dbType, querySql);
+                if (table?.Rows.Count>0)
+                {
+                   
+                    var xElement = GenericService.DataTableToXElement(table);
+                    var dataList = GenericService.GetXmlNodeStringList(xElement);
+                    var dataNumber = dataList.Count;
+                    
+                    var taskCount = (int)Math.Ceiling((decimal)dataNumber / onceNumber);
+                    AddRowToTable(DateTime.Now, viewName, $"获取到{dataNumber}条数据，分{taskCount}次上传");
+                    string batchTaskId =
+                        GenericService.GetBatchTaskId(viewSet.SetCode, begin, end, taskCount, dataNumber);
+                    AddRowToTable(DateTime.Now, viewName, $"成功获取批量任务号：{batchTaskId}");
+                    int remainNumber = dataNumber;
+                    for (int i = 1; i <=taskCount; i++)
                     {
-                        AddRowToTable(item.TaskTime,item.TaskName,item.TaskResult);
+                       
+                        int useNumber = 0;
+                        if (remainNumber > onceNumber)
+                        {
+                            useNumber = onceNumber;
+                            remainNumber -= onceNumber;
+                        }
+                        else
+                        {
+                            useNumber = remainNumber;
+                            remainNumber = 0;
+                        }
+
+                        if (useNumber>0)
+                        {
+                            AddRowToTable(DateTime.Now, viewName, $"第{i}次任务,上传{useNumber}条数据，");
+                            string singleTaskId =
+                                GenericService.GetSingleTaskId(batchTaskId, viewSet.SetCode, useNumber);
+                            AddRowToTable(DateTime.Now, viewName, $"第{i}次任务,单次任务号{singleTaskId}，");
+                            var upList= dataList.Skip((i - 1) * onceNumber).Take(useNumber).ToList();
+                            var dateset = GenericService.GetUploadDataSets(upList,viewSet.SetCode);
+                            var compressDate = GenericService.CompressDataToBase64(dateset);
+                            var upTaskId = GenericService.UploadTaskData(singleTaskId, viewSet.SetCode, compressDate);
+                            AddRowToTable(DateTime.Now, viewName, $"第{i}次任务上传成功,返回任务号{upTaskId}");
+                        }
+
                     }
                 }
-               
+                AddRowToTable(DateTime.Now, viewName, $"没有获取到视图数据");
             }
             catch (Exception ex)
             {
-                AddRowToTable(DateTime.Now, viewText, $"数据接收失败,{ex.Message}-{ex.InnerException?.Message}");
+                AddRowToTable(DateTime.Now, viewName, $"{ex.Message}");
             }
-            AddRowToTable(DateTime.Now, viewText, $"本次上传任务结束");
+            AddRowToTable(DateTime.Now, viewName, $"上传任务结束");
         }
 
         private void AddRowToTable(DateTime? date, string eventName, string eventResult)
@@ -146,6 +181,11 @@ namespace YYhUpload
             gridTable.Rows.Add(row);
             dgvResult.DataSource = gridTable;
             dgvResult.Refresh();
+        }
+
+        private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
         }
     }
 }
